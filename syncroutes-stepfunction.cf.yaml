@@ -1,0 +1,180 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Step Function state machine, and cloudwatch trigger to run every minute"
+Parameters: 
+  LambdaSyncName: 
+    Type: String
+    Description: Enter the name of syncroutes lambda function
+  VpcId: 
+    Type: String
+    Description: Enter the vpc id to sync routes
+  RouteTableId: 
+    Type: String
+    Description: Enter the MAIN route table id to sync routes
+  CIDRBlockList: 
+    Type: String
+    Description: Enter the list of CIDR blocks to sync routes
+Resources:
+  LambdaExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+  StatesExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - !Sub states.${AWS::Region}.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: StatesExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource: "*"
+  StepFunctionStateMachine:
+    Type: "AWS::StepFunctions::StateMachine"
+    Properties:
+      StateMachineName: VMWareSyncRoutes-StateMachine
+      DefinitionString:
+        Fn::Sub: |
+          {
+            "Comment": "VMWare Routes-sync 10sec * 5 State Machine",
+            "StartAt": "Call_1",
+            "States": {
+              "Call_1": {
+                "Type": "Task",
+                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaSyncName}",
+                "InputPath": "$.lambdaInput",
+                "ResultPath": "$.previousResult",
+                "OutputPath": "$",
+                "Next": "Wait_1"
+              },
+              "Wait_1": {
+                "Type": "Wait",
+                "Seconds": 10,
+                "Next": "Call_2"
+              },
+              "Call_2": {
+                "Type": "Task",
+                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaSyncName}",
+                "InputPath": "$.lambdaInput",
+                "ResultPath": "$.previousResult",
+                "OutputPath": "$",
+                "Next": "Wait_2"
+              },
+              "Wait_2": {
+                "Type": "Wait",
+                "Seconds": 10,
+                "Next": "Call_3"
+              },
+              "Call_3": {
+                "Type": "Task",
+                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaSyncName}",
+                "InputPath": "$.lambdaInput",
+                "ResultPath": "$.previousResult",
+                "OutputPath": "$",
+                "Next": "Wait_3"
+              },
+              "Wait_3": {
+                "Type": "Wait",
+                "Seconds": 10,
+                "Next": "Call_4"
+              },
+              "Call_4": {
+                "Type": "Task",
+                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaSyncName}",
+                "InputPath": "$.lambdaInput",
+                "ResultPath": "$.previousResult",
+                "OutputPath": "$",
+                "Next": "Wait_4"
+              },
+              "Wait_4": {
+                "Type": "Wait",
+                "Seconds": 10,
+                "Next": "Call_5"
+              },
+              "Call_5": {
+                "Type": "Task",
+                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaSyncName}",
+                "InputPath": "$.lambdaInput",
+                "ResultPath": "$.previousResult",
+                "OutputPath": "$",
+                "Next": "DoneStep"
+              },
+              "DoneStep": {
+                "Type": "Pass",
+                "End": true
+              }
+            }
+          }
+
+      RoleArn: !GetAtt StatesExecutionRole.Arn
+  ExecuteStateMachineRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            -
+              Sid: "AllowCWEServiceToAssumeRole"
+              Effect: "Allow"
+              Action:
+                - "sts:AssumeRole"
+              Principal:
+                Service:
+                  - "events.amazonaws.com"
+        Path: "/"
+        Policies:
+          -
+            PolicyName: "ExecuteStateMachine"
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                -
+                  Effect: "Allow"
+                  Action:
+                    - "states:StartExecution"
+                  Resource: "*"
+
+  ScheduledRule: 
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: "VMWareSyncRoutes-ScheduledRule"
+      ScheduleExpression: "rate(1 minute)"
+      State: "ENABLED"
+      Targets:
+        -
+          Arn: !Ref StepFunctionStateMachine
+          Id: SFN_Target
+          RoleArn: !GetAtt ExecuteStateMachineRole.Arn
+          Input:
+            Fn::Sub: |
+              {
+                  "results": [],
+                  "lambdaInput": {
+                      "resource": "/vpcs/{vpcId}/route-tables/{routeTableId}",
+                      "path": "/vpcs/vpc-08379f9e44cb59fe8/route-tables/rtb-0959966ba6c082e2d",
+                      "httpMethod": "PATCH",
+                      "headers": { "content-type": "application/json" },
+                      "pathParameters": { "vpcId": "vpc-08379f9e44cb59fe8", "routeTableId": "rtb-0959966ba6c082e2d" },
+                      "body": "{\"destination-cidr-block\":\"10.100.100.0/24\",\"dry-run\":true}"
+                  }
+              }
+
+
+
+
