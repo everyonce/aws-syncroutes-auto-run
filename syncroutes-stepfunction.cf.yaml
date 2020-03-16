@@ -167,11 +167,11 @@ Resources:
                   "results": [],
                   "lambdaInput": {
                       "resource": "/vpcs/{vpcId}/route-tables/{routeTableId}",
-                      "path": "/vpcs/vpc-08379f9e44cb59fe8/route-tables/rtb-0959966ba6c082e2d",
+                      "path": "/vpcs/${VpcId}/route-tables/${RouteTableId}",
                       "httpMethod": "PATCH",
                       "headers": { "content-type": "application/json" },
-                      "pathParameters": { "vpcId": "vpc-08379f9e44cb59fe8", "routeTableId": "rtb-0959966ba6c082e2d" },
-                      "body": "{\"destination-cidr-block\":\"10.100.100.0/24\",\"dry-run\":true}"
+                      "pathParameters": { "vpcId": "${VpcId}", "routeTableId": "${RouteTableId}" },
+                      "body": "{\"destination-cidr-block\":\"${CIDRBlockList}\"}"
                   }
               }
 
