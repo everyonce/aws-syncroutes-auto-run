@@ -4,15 +4,22 @@ Parameters:
   LambdaSyncName: 
     Type: String
     Description: Enter the name of syncroutes lambda function
+    Default: awssyncroutes-dev
   VpcId: 
     Type: String
     Description: Enter the vpc id to sync routes
+    Default: vpc-08379f9e44cb59fe8
   RouteTableId: 
     Type: String
     Description: Enter the MAIN route table id to sync routes
+    Default: rtb-0959966ba6c082e2d
   CIDRBlockList: 
     Type: String
     Description: Enter the list of CIDR blocks to sync routes
+    Default: 
+      |
+      ["{\"destination-cidr-block\":\"10.0.0.0/16\"}","{\"destination-cidr-block\":\"10.10.0.0/16\"}"]
+
 Resources:
   LambdaExecutionRole:
     Type: "AWS::IAM::Role"
@@ -53,66 +60,53 @@ Resources:
         Fn::Sub: |
           {
             "Comment": "VMWare Routes-sync 10sec * 5 State Machine",
-            "StartAt": "Call_1",
+            "StartAt": "MainLoop",
             "States": {
-              "Call_1": {
-                "Type": "Task",
-                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaSyncName}",
-                "InputPath": "$.lambdaInput",
-                "ResultPath": "$.previousResult",
-                "OutputPath": "$",
-                "Next": "Wait_1"
-              },
-              "Wait_1": {
-                "Type": "Wait",
-                "Seconds": 10,
-                "Next": "Call_2"
-              },
-              "Call_2": {
-                "Type": "Task",
-                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaSyncName}",
-                "InputPath": "$.lambdaInput",
-                "ResultPath": "$.previousResult",
-                "OutputPath": "$",
-                "Next": "Wait_2"
-              },
-              "Wait_2": {
-                "Type": "Wait",
-                "Seconds": 10,
-                "Next": "Call_3"
-              },
-              "Call_3": {
-                "Type": "Task",
-                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaSyncName}",
-                "InputPath": "$.lambdaInput",
-                "ResultPath": "$.previousResult",
-                "OutputPath": "$",
-                "Next": "Wait_3"
-              },
-              "Wait_3": {
-                "Type": "Wait",
-                "Seconds": 10,
-                "Next": "Call_4"
-              },
-              "Call_4": {
-                "Type": "Task",
-                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaSyncName}",
-                "InputPath": "$.lambdaInput",
-                "ResultPath": "$.previousResult",
-                "OutputPath": "$",
-                "Next": "Wait_4"
-              },
-              "Wait_4": {
-                "Type": "Wait",
-                "Seconds": 10,
-                "Next": "Call_5"
-              },
-              "Call_5": {
-                "Type": "Task",
-                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaSyncName}",
-                "InputPath": "$.lambdaInput",
-                "ResultPath": "$.previousResult",
-                "OutputPath": "$",
+              "MainLoop": {
+                "Type": "Map",
+                "ItemsPath": "$.waitList",
+                "Parameters": {
+                  "waitTime.$": "$$.Map.Item.Value",
+                  "cidrBlockParameters.$": "$.cidrBlockParameters"
+                },
+                "MaxConcurrency": 1,
+                "Iterator": {
+                  "StartAt": "CallLambdas",
+                  "States": {
+                    "CallLambdas": {
+                      "Type": "Map",
+                      "InputPath": "$",
+                      "ItemsPath": "$.cidrBlockParameters",
+                      "Parameters": {
+                        "resource": "/vpcs/{vpcId}/route-tables/{routeTableId}",
+                        "path": "/vpcs/${VpcId}/route-tables/${RouteTableId}",
+                        "httpMethod": "PATCH",
+                        "headers": { "content-type": "application/json" },
+                        "pathParameters": { "vpcId": "${VpcId}", "routeTableId": "${RouteTableId}" },
+                        "body.$": "$$.Map.Item.Value"
+                      },
+                      "Iterator": {
+                        "StartAt": "lambdaCall",
+                        "States": {
+                          "lambdaCall": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaSyncName}",                          "InputPath": "$",
+                            "ResultPath": "$.results",
+                            "OutputPath": "$",
+                            "End": true
+                          }
+                        }
+                      },
+                      "Next": "WaitStep",
+                      "ResultPath": "$.results"
+                    },
+                    "WaitStep": {
+                      "Type": "Wait",
+                      "SecondsPath": "$.waitTime",
+                      "End": true
+                    }
+                  }
+                },
                 "Next": "DoneStep"
               },
               "DoneStep": {
@@ -164,16 +158,17 @@ Resources:
           Input:
             Fn::Sub: |
               {
-                  "results": [],
-                  "lambdaInput": {
-                      "resource": "/vpcs/{vpcId}/route-tables/{routeTableId}",
-                      "path": "/vpcs/${VpcId}/route-tables/${RouteTableId}",
-                      "httpMethod": "PATCH",
-                      "headers": { "content-type": "application/json" },
-                      "pathParameters": { "vpcId": "${VpcId}", "routeTableId": "${RouteTableId}" },
-                      "body": "{\"destination-cidr-block\":\"${CIDRBlockList}\"}"
-                  }
+                "results": [],
+                "waitList": [
+                  10,
+                  10,
+                  10,
+                  10,
+                  10
+                ],
+                "cidrBlockParameters": ${CIDRBlockList}
               }
+
 
 
 
